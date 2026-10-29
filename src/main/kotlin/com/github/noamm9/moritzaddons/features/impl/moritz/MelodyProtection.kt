@@ -1,8 +1,7 @@
-package com.github.noamm9.moritzaddons.features.impl.moritz
+package com.github.noamm9.moritzaddons.features.impl.floor7
 
-import com.github.noamm9.config.types.SliderSetting
 import com.github.noamm9.config.types.ToggleSetting
-import com.github.noamm9.event.impl.ContainerEvent
+import com.github.noamm9.event.impl.PacketEvent
 import com.github.noamm9.event.impl.TerminalEvent
 import com.github.noamm9.event.priority.EventPriority
 import com.github.noamm9.features.Feature
@@ -11,29 +10,23 @@ import com.github.noamm9.features.impl.floor7.terminals.impl.MelodyTerminal
 import com.github.noamm9.utils.ChatUtils
 import net.minecraft.client.gui.screens.Screen
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen
-import net.minecraft.world.inventory.ChestMenu
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
+import net.minecraft.world.item.Items
 
 object MelodyProtection : Feature(
     name = "Melody Anti-Missclick",
-    description = "Prevents missclicking in the Melody terminal when the pane is not aligned.",
+    description = "Blocks wrong, skipped and duplicate clicks in the Melody terminal.",
     toggled = false
 ) {
-    private val blockWrongSlots by ToggleSetting("Block Non-Button Slots", true)
-        .section("Melody Rules")
-        .withDescription("Cancels clicks on any slot other than the active row's button.")
+    private val blockDuringFcDelay by ToggleSetting("Block During First-Click Delay", false)
+        .section("Protections")
+        .withDescription("Also blocks clicks during the first-click delay. Leave off if every click gets blocked.")
 
-    private val blockUnaligned by ToggleSetting("Block Unaligned Clicks", true)
-        .withDescription("Cancels clicks on the button if the green pane is not on the target column.")
+    private val debug by ToggleSetting("Debug Messages", false)
+        .section("Debug")
+        .withDescription("Prints every Melody click and the reason for each block in chat.")
 
-    private val preventDoubleClick by ToggleSetting("Prevent Double Click", true)
-        .withDescription("Blocks clicking the same row button multiple times before the server updates.")
-
-    private val clickCooldown by SliderSetting("Spam Cooldown", 250, 0, 500, 10, "ms")
-        .withDescription("Minimum delay between valid button clicks.")
-
-    private val chatAlerts by ToggleSetting("Chat Feedback", false)
-        .section("Notifications")
-        .withDescription("Prints a message in chat whenever a missclick is blocked.")
+    private const val CLICK_COOLDOWN = 150L
 
     private var lastClickTime = 0L
     private var lastClickedSlot: Int? = null
@@ -41,11 +34,9 @@ object MelodyProtection : Feature(
     private const val SIM_SCREEN_CLASS =
         "com.github.noamm9.features.impl.floor7.terminals.sim.TerminalSimScreen"
 
-    /** The sim screen if it's currently open (resolved by name, so no compile-time dependency). */
     private val simScreen: Screen?
         get() = mc.screen?.takeIf { it.javaClass.name == SIM_SCREEN_CLASS }
 
-    /** The sim screen's terminal handler, read via its `getTerminal()` getter. */
     private val simTerminal: Any?
         get() {
             val screen = simScreen ?: return null
@@ -61,13 +52,12 @@ object MelodyProtection : Feature(
     private val currentHandler: Any?
         get() = simTerminal ?: TerminalListener.currentHandler
 
-    override fun init() {
-        register<TerminalEvent.SlotUpdate> {
-            if (event.handler is MelodyTerminal) {
-                lastClickedSlot = null
-            }
-        }
+    private fun block(event: PacketEvent.Sent, reason: String) {
+        event.isCanceled = true
+        if (debug.value) ChatUtils.modMessage("§c[MP] blocked: $reason")
+    }
 
+    override fun init() {
         register<TerminalEvent.Break> {
             lastClickedSlot = null
         }
@@ -77,77 +67,89 @@ object MelodyProtection : Feature(
             lastClickTime = 0L
         }
 
-        register<ContainerEvent.MouseClick>(EventPriority.HIGH) {
+        // Intercepts the click packet, so it covers vanilla clicks,
+        // TerminalSolver and AutoTerminal.
+        register<PacketEvent.Sent>(EventPriority.HIGHEST) {
+            val packet = event.packet as? ServerboundContainerClickPacket ?: return@register
             val handler = currentHandler ?: return@register
             if (handler !is MelodyTerminal) return@register
 
+            val clickedSlotId = packet.slotNum.toInt()
+            if (clickedSlotId < 0) return@register
+
             val current = MelodyTerminal.current ?: return@register
             val correct = MelodyTerminal.correct ?: return@register
-            val buttonRow = MelodyTerminal.buttonRow ?: return@register
-            val actualSlot = buttonRow * 9 + 16
+            val activeRow = MelodyTerminal.buttonRow ?: return@register
 
-            // Resolve the clicked slot ID from the container screen
-            val clickedSlotId = getHoveredSlotId()
-            if (clickedSlotId != null && blockWrongSlots.value && clickedSlotId != actualSlot) {
-                event.isCanceled = true
-                alert("Blocked click on wrong slot ($clickedSlotId != $actualSlot)")
-                return@register
+            if (debug.value) {
+                ChatUtils.modMessage("§e[MP] slot=$clickedSlotId current=$current correct=$correct row=$activeRow")
             }
 
-            // Block if the moving green pane isn't aligned with the magenta target
-            if (blockUnaligned.value && current != correct) {
-                event.isCanceled = true
-                alert("Blocked early/late click (current: ${current + 1}, target: ${correct + 1})")
-                return@register
+            // Optional: block clicks during the first-click delay.
+            if (blockDuringFcDelay.value) {
+                val inDelay = try {
+                    val sim = simScreen
+                    if (sim != null) {
+                        sim.javaClass.methods
+                            .firstOrNull { it.name == "isFirstClickDelay" && it.parameterCount == 0 }
+                            ?.invoke(sim) as? Boolean ?: false
+                    } else {
+                        TerminalListener.checkFcDelay()
+                    }
+                } catch (_: Throwable) {
+                    false
+                }
+                if (inDelay) {
+                    block(event, "first-click delay")
+                    return@register
+                }
             }
 
-            // Block accidental double-clicks on the same row before the terminal updates
-            if (preventDoubleClick.value && simScreen == null && lastClickedSlot == actualSlot) {
-                event.isCanceled = true
-                alert("Blocked duplicate click on row ${buttonRow + 1}")
-                return@register
+            // Only the four button slots (16, 25, 34, 43) are ever checked.
+            val isButtonSlot = clickedSlotId % 9 == 7 && clickedSlotId in 16..43
+            if (!isButtonSlot) return@register
+
+            val clickedRow = (clickedSlotId - 16) / 9
+
+            // Clicks on rows that are already done are harmless.
+            if (clickedRow < activeRow) return@register
+
+            if (clickedRow > activeRow) {
+                // Skip click. On the first row it triggers the Hypixel freeze penalty.
+                if (activeRow == 0) {
+                    block(event, "skip on first row (clicked row $clickedRow)")
+                    return@register
+                }
+
+                // Later rows: only allow the skip if the clicked row's target
+                // already holds the moving pane. If the slots can't be read, let it through.
+                val screen = mc.screen as? AbstractContainerScreen<*> ?: return@register
+                val slots = screen.menu.slots
+                val movingPane = slots.getOrNull((activeRow + 1) * 9 + 1 + current)?.item?.item
+                val itemAtTarget = slots.getOrNull((clickedRow + 1) * 9 + 1 + correct)?.item?.item
+                if (movingPane == null || itemAtTarget == null) return@register
+
+                if (itemAtTarget != movingPane || movingPane == Items.AIR) {
+                    block(event, "bad skip (clicked row $clickedRow, active row $activeRow)")
+                    return@register
+                }
+            } else {
+                // Active row: the moving pane has to be on the target column.
+                if (current != correct) {
+                    block(event, "not aligned (current=$current, correct=$correct)")
+                    return@register
+                }
             }
 
-            // Block clicks faster than the cooldown threshold
+            // Duplicate click on the same button within the cooldown.
             val now = System.currentTimeMillis()
-            if (now - lastClickTime < clickCooldown.value) {
-                event.isCanceled = true
+            if (lastClickedSlot == clickedSlotId && now - lastClickTime < CLICK_COOLDOWN) {
+                block(event, "double click on slot $clickedSlotId")
                 return@register
             }
 
             lastClickTime = now
-            lastClickedSlot = actualSlot
-        }
-    }
-
-    /**
-     * Finds the slot under the mouse without touching the protected `hoveredSlot` field.
-     * Returns null if not in a container screen or the mouse isn't over a slot.
-     */
-    private fun getHoveredSlotId(): Int? {
-        val screen = mc.screen as? AbstractContainerScreen<*> ?: return null
-        val window = mc.window
-
-        // Mouse position in GUI-scaled coordinates
-        val mouseX = mc.mouseHandler.xpos() * window.guiScaledWidth / window.screenWidth
-        val mouseY = mc.mouseHandler.ypos() * window.guiScaledHeight / window.screenHeight
-
-        // Same layout math vanilla uses for chest-style GUIs (leftPos/topPos are protected)
-        val rows = (screen.menu as? ChestMenu)?.rowCount ?: 6
-        val imageWidth = 176
-        val imageHeight = 114 + rows * 18
-        val leftPos = (screen.width - imageWidth) / 2
-        val topPos = (screen.height - imageHeight) / 2
-
-        return screen.menu.slots.firstOrNull { slot ->
-            mouseX >= leftPos + slot.x - 1 && mouseX < leftPos + slot.x + 17 &&
-                    mouseY >= topPos + slot.y - 1 && mouseY < topPos + slot.y + 17
-        }?.index
-    }
-
-    private fun alert(message: String) {
-        if (chatAlerts.value) {
-            ChatUtils.modMessage("§c[MelodyProtection] §7$message")
+            lastClickedSlot = clickedSlotId
         }
     }
 }

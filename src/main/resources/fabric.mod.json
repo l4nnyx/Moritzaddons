@@ -12,7 +12,7 @@
   "entrypoints": {
     "client": [
       {
-        "value": "com.github.noamm9.Moritzaddons.moritzaddons",
+        "value": "com.github.noamm9.moritzaddons.Moritzaddons",
         "adapter": "kotlin"
       }
     ]
