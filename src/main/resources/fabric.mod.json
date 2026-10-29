@@ -18,7 +18,7 @@
     ]
   },
   "mixins": [
-    "untitled.mixins.json"
+    "moritz.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",

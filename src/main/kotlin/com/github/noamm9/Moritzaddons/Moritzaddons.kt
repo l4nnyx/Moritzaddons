@@ -1,10 +1,9 @@
-package com.github.noamm9.untitled
+package com.github.noamm9.Moritzaddons
 
 import com.github.noamm9.NoammAddons
-import com.github.noamm9.features.impl.floor7.terminals.AutoTerminal
 import net.fabricmc.api.ClientModInitializer
 
-object Untitled: ClientModInitializer {
+object Moritzaddons: ClientModInitializer {
     override fun onInitializeClient() {
         NoammAddons.logger.info("Hi from ${this.javaClass.simpleName}!")
     }

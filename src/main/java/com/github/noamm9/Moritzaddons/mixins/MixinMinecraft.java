@@ -1,4 +1,4 @@
-package com.github.noamm9.untitled.mixins;
+package com.github.noamm9.Moritzaddons.mixins;
 
 import com.github.noamm9.NoammAddons;
 import net.minecraft.client.Minecraft;

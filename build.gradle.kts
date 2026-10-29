@@ -8,7 +8,7 @@ plugins {
     kotlin("jvm") version "2.3.21"
     id("net.fabricmc.fabric-loom") version "1.16.2"
     id("maven-publish")
-    id ("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
+    id("org.jetbrains.kotlin.plugin.serialization") version "2.3.21"
 }
 
 version = project.property("mod_version") as String
@@ -24,22 +24,12 @@ java {
     withSourcesJar()
 }
 
-
-
 repositories {
     maven { url = uri("https://pkgs.dev.azure.com/djtheredstoner/DevAuth/_packaging/public/maven/v1") }
-    maven("https://repo.essential.gg/repository/maven-public") {
-        name = "Essential"
-        content {
-            includeGroup("gg.essential")
-        }
-    }
-    maven("https://jitpack.io") {
-        name = "JitPack"
-        content {
-            includeGroup("com.github.Noamm9")
-        }
-    }
+    maven { url = uri("https://repo.essential.gg/repository/maven-public") }
+    maven { url = uri("https://jitpack.io") }
+    maven { url = uri("https://maven.terraformersmc.com/releases/") }
+    maven { url = uri("https://api.modrinth.com/maven") }
 }
 
 dependencies {
@@ -61,11 +51,18 @@ tasks.processResources {
     inputs.property("version", project.version)
     inputs.property("minecraft_version", project.property("minecraft_version"))
     inputs.property("loader_version", project.property("loader_version"))
+    inputs.property("kotlin_loader_version", project.property("kotlin_loader_version"))
     inputs.property("noammaddons_version", project.property("noammaddons_version"))
     filteringCharset = "UTF-8"
 
     filesMatching("fabric.mod.json") {
-        expand("version" to project.version, "minecraft_version" to project.property("minecraft_version")!!, "loader_version" to project.property("loader_version")!!, "kotlin_loader_version" to project.property("kotlin_loader_version")!!, "noammaddons_version" to project.property("noammaddons_version")!!)
+        expand(
+            "version" to project.version,
+            "minecraft_version" to project.property("minecraft_version")!!,
+            "loader_version" to project.property("loader_version")!!,
+            "kotlin_loader_version" to project.property("kotlin_loader_version")!!,
+            "noammaddons_version" to project.property("noammaddons_version")!!
+        )
     }
 }
 
