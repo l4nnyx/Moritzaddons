@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "untitled",
+  "id": "moritzaddons",
   "version": "${version}",
-  "name": "untitled",
-  "description": "",
-  "authors": [],
+  "name": "Moritzaddons",
+  "description": "Skyblock quality-of-life features.",
+  "authors": ["Lenny"],
   "contact": {},
   "license": "All-Rights-Reserved",
   "icon": "assets/untitled/icon.png",
@@ -12,7 +12,7 @@
   "entrypoints": {
     "client": [
       {
-        "value": "com.github.noamm9.untitled.Untitled",
+        "value": "com.github.noamm9.Moritzaddons.moritzaddons",
         "adapter": "kotlin"
       }
     ]
@@ -24,7 +24,7 @@
     "fabricloader": ">=${loader_version}",
     "fabric-language-kotlin": ">=${kotlin_loader_version}",
     "fabric-api": "*",
-    "noammaddons": "${noammaddons_version}",
+    "noammaddons": "*",
     "minecraft": "${minecraft_version}"
   }
 }

@@ -1,4 +1,4 @@
-package com.github.noamm9.features.impl.floor7.terminals
+package com.github.noamm9.moritzaddons.features.impl.moritz
 
 import com.github.noamm9.config.types.SliderSetting
 import com.github.noamm9.config.types.ToggleSetting

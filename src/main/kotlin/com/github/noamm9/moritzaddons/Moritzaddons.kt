@@ -1,4 +1,4 @@
-package com.github.noamm9.Moritzaddons
+package com.github.noamm9.moritzaddons
 
 import com.github.noamm9.NoammAddons
 import net.fabricmc.api.ClientModInitializer
